@@ -56,6 +56,10 @@
         inherit localPackages;
         workspaceRoot = chatterboxSrc;
       };
+      workspaceProjectNames = lib.attrNames workspaceProjects;
+      rootPackageName =
+        assert lib.length workspaceProjectNames == 1;
+        builtins.head workspaceProjectNames;
       workspaceConfig = uv2nix.lib.workspace.loadConfig pyproject (
         (map (project: project.pyproject) (lib.attrValues workspaceProjects))
         ++ lib.optional (!(pyproject ? project)) pyproject
@@ -64,53 +68,14 @@
         sourcePreference = "wheel";
         environ = { };
         spec = {
-          "chatterbox-tts" = [ ];
+          ${rootPackageName} = [ ];
         };
         localProjects = workspaceProjects;
         config = workspaceConfig;
         workspaceRoot = chatterboxSrc;
         lock = uvLock;
       };
-
-      mkPyprojectOverrides =
-        system:
-        final: prev:
-        let
-          pkgs = pkgsFor system;
-          inherit (final) resolveBuildSystem;
-        in
-        {
-          antlr4-python3-runtime = prev.antlr4-python3-runtime.overrideAttrs (old: {
-            nativeBuildInputs =
-              (old.nativeBuildInputs or [ ])
-              ++ resolveBuildSystem {
-                setuptools = [ ];
-              };
-          });
-
-          sox = prev.sox.overrideAttrs (old: {
-            nativeBuildInputs =
-              (old.nativeBuildInputs or [ ])
-              ++ resolveBuildSystem {
-                setuptools = [ ];
-              };
-          });
-
-          numba = prev.numba.overrideAttrs (old: {
-            buildInputs = (old.buildInputs or [ ]) ++ [ pkgs.onetbb ];
-          });
-
-          sympy = prev.sympy.overrideAttrs (old: {
-            dependencies = (old.dependencies or { }) // {
-              mpmath = [ ];
-            };
-            passthru = (old.passthru or { }) // {
-              dependencies = ((old.passthru.dependencies or { }) // {
-                mpmath = [ ];
-              });
-            };
-          });
-        };
+      mkPyprojectOverrides = system: import ./overrides.nix { pkgs = pkgsFor system; };
 
       mkPackagePythonSet =
         system: enableCuda:
@@ -193,7 +158,7 @@
         let
           pkgs = pkgsFor system;
           pythonSet = mkPackagePythonSet system enableCuda;
-          rootPkg = pythonSet."chatterbox-tts";
+          rootPkg = pythonSet.${rootPackageName};
           runtimeDeps = resolveRuntimeDeps pythonSet (builtins.attrNames rootPkg.dependencies);
           extraPythonRuntimeDeps = [
             pkgs.python312Packages.mpmath
@@ -268,10 +233,10 @@
           };
         in
         {
-          default = cpuPythonSet."chatterbox-tts";
-          chatterbox = cpuPythonSet."chatterbox-tts";
+          default = cpuPythonSet.${rootPackageName};
+          chatterbox = cpuPythonSet.${rootPackageName};
           chatterbox-python = chatterboxPython;
-          chatterbox-cuda = cudaPythonSet."chatterbox-tts";
+          chatterbox-cuda = cudaPythonSet.${rootPackageName};
           chatterbox-cuda-python = chatterboxCudaPython;
           chatterbox-gradio-cuda = chatterboxGradioCuda;
         }
